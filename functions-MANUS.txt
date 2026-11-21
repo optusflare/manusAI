@@ -1,0 +1,89 @@
+ 1. Navigation, UI & App State Functions
+
+    navigate(viewName) — Switches between Transfer, Friends, Feedback, and Admin views, hiding inactive screens and keeping the top nav state synced.
+
+    setTransferMode(mode) — Switches between Global P2P (Heavy), Async Drop (≤700 KB), and Zero-Internet Local, adjusting size caps and visible pairing controls.
+
+    setRole(role) — Switches the active tab between Receiver and Sender.
+
+    updateMaxSizeCap(megabytes) — Updates the user's file size limit slider readout and enforces safe browser memory caps (noting desktop vs. mobile limits).
+
+    syncNetworkStatus() — Listens to browser online/offline events and updates the top status badge and offline-ready indicators.
+
+    loadAppConfig() — Reads config/appSettings from Firestore (Worker URL, Turnstile site key, maintenance banner text, blocked extensions) and applies them live.
+
+    renderMaintenanceBanner(text) — Shows or hides the top announcement/maintenance bar based on your Firestore config.
+
+2. Authentication, User IDs & Friends Functions
+
+    signInWithGoogle() — Signs the user in via Firebase Authentication using Google Sign-In and sets yourapp.onrender.com as an authorized domain.
+
+    signOutUser() — Signs out of Firebase Auth and clears private/admin views.
+
+    ensureUserProfile(user) — Creates or loads users/{uid} in Firestore and assigns a unique Friend ID (like BM-849201) if one doesn't exist yet.
+
+    sendFriendRequest(targetFriendId) — Looks up a user by their Friend ID and creates a pending request in Firestore.
+
+    respondToFriendRequest(requestId, accept) — Accepts or declines an incoming request; if accepted, adds both users to each other's friends list.
+
+    listenToFriendsAndInvites(uid) — Subscribes to real-time Firestore updates for friends, incoming requests, and direct room invites (driving the notification dot).
+
+    sendRoomInvite(friendUid, roomCode) — Sends a live room invite to a friend so they can jump straight into a transfer room with one click.
+
+3. Room Pairing, QR Codes & Offline Handshake Functions
+
+    createTransferRoom() — Generates a 6-digit room code, renders a join QR code, creates a temporary signaling room in Firestore with a 2-hour expiry, and starts the countdown timer.
+
+    joinTransferRoom(code) — Connects a sender to an existing 6-digit Firestore signaling room and starts WebRTC negotiation.
+
+    destroyCurrentRoom() — Deletes the room and its temporary messages from Firestore, closes WebRTC connections, and resets the timer.
+
+    startRoomExpiryTimer(expiresAt) — Runs a live countdown clock and automatically closes/cleans up the room when the 2-hour window expires.
+
+    generateOfflineOffer() — Creates a local WebRTC SDP offer and encodes it into a QR code for zero-internet local pairing.
+
+    generateOfflineAnswer(offerJson) — Takes the receiver's offer (via QR scan or pasted JSON), creates a WebRTC answer, and renders an answer QR code back to the screen.
+
+    applyOfflineAnswer(answerJson) — Completes the offline peer connection on the receiver side so files stream over local Wi-Fi/hotspot with zero internet.
+
+    startQrScanner(targetRole) & stopQrScanner() — Opens the device camera to scan room or offline SDP QR codes, then cleanly releases the camera stream.
+
+4. Security, Bot Check & Chunked Streaming Functions
+
+    verifyTurnstileToken(token) — Captures and validates the Cloudflare Turnstile challenge before allowing room creation, transfers, or feedback submissions.
+
+    computeFileSha256(file) — Calculates the SHA-256 hash of a selected file locally in the browser without uploading the file.
+
+    checkFileSecurityWithWorker(fileMeta, sha256Hash) — Checks file extensions against the blocked list and sends the hash/metadata to your Cloudflare Worker URL (pulled from Firestore config) to get a Safe, Flagged, or Unknown status.
+
+    sendFileInChunks(file, dataChannel) — Slices large files (such as 3 GB+) into 64 KB chunks using file.slice(), tags each chunk with an index, and respects bufferedAmountLowThreshold so browser RAM stays low.
+
+    togglePauseTransfer() & resumeFromChunk(chunkIndex) — Pauses outgoing chunks on demand and resumes from the last acknowledged chunk index if interrupted.
+
+    receiveChunkAndSave(chunkMessage) — Streams incoming chunks directly to disk via showSaveFilePicker when supported, or assembles chunks into a downloadable file when complete, logging metadata to Firestore.
+
+    sendAsyncDrop(file) — Handles small files (≤700 KB) stored temporarily in Firestore for asynchronous pickup when both peers aren't online at once.
+
+5. Ephemeral Room Chat, Feedback & Admin Functions
+
+    sendChatMessage(text) & listenToRoomChat(roomCode) — Sends and streams temporary chat messages inside the active room, wiping them when the room closes or expires after 2 hours.
+
+    submitFeedback(category, message) — Writes user feedback directly into Firestore's feedback collection with length/field validation.
+
+    isCurrentUserAdmin() — Checks both auth.currentUser and uid === YOUR_ADMIN_UID before rendering or allowing actions in the Admin view.
+
+    saveAdminConfig(settingsObj) — Saves your Cloudflare Worker URL, Turnstile key, maintenance banner, and blocked extensions to config/appSettings in Firestore.
+
+    loadAdminAnalytics() — Loads transfer metadata logs, Cloudflare Worker security alerts, and user feedback entries in the Admin panel (locked to your UID via Firestore rules).
+
+6. Cloudflare Worker Functions (cloudflare-worker.js)
+
+    handleRequest(request) — Handles CORS preflight requests, checks incoming payloads, enforces basic rate/method checks, and routes requests.
+
+    lookupHashThreat(sha256Hash) — Queries a threat-hash lookup endpoint/API for the given SHA-256 hash and returns a normalized risk verdict.
+
+    logSecurityAlert(alertPayload) — Records flagged/blocked file events so your admin alert feed has a clean history.
+
+7. PWA Functions (manifest.json & sw.js)
+
+    installEvent / activate / fetch handlers in sw.js — Caches the app shell (index.html, CSS, JS, icons, fonts) so the PWA opens offline, while letting Firebase, Turnstile, and Worker network requests pass through cleanly.
